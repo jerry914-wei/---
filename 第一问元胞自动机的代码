@@ -1,0 +1,320 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define Total_num 10000  //全校总人数
+
+#define Wor_num 20  //打餐工作人员的数量
+
+#define Site_size 30  //食堂大小
+
+#define Morning_num 500  //早餐人数
+#define Noon_num 750  //午餐人数
+#define Evening_num 650  //晚餐人数
+
+#define time 180 //观察变化时间
+
+#define random(x) ((rand()%x)+1) //随机数函数
+
+int recovery_time[2] = { 15, 10 }; //恢复被隔离期
+int incubation_time[2] = { 10, 15 };  //潜伏期
+
+int student[Total_num + 1] = { 0 };  //模拟每个学生是否已经吃饭, 数值表示状态
+int Stu_state[Total_num + 1] = { 0 };   //模拟每个学生的患病状态
+int Stu_after[Total_num + 1] = { 0 };  //记录改变后的学生患病状态
+int Stu_body[Total_num + 1] = { 0 };
+int wor_state[Wor_num + 1] = { 0 };  //大妈的患病状态
+int wor_after[Wor_num + 1] = { 0 };  //记录大妈改变后的患病状态
+int wor_days[Wor_num + 1] = { 0 };  //记录大妈的状态剩余天数
+int wor_body[Wor_num + 1] = { 0 };  //大妈体质
+int sick_num = 0;  //记录患病人数
+int incubation_num = 0; //记录潜伏期人数
+int state_days[Total_num + 1] = { 0 };  //记录剩余潜伏天数,记录恢复剩余天数  记录状态剩余天数
+double p1 = 0.03, p2 = 0.03, p3 = 0.05, p4 = 0.6, p5 = 0.2, p6 = 0.1, p = 0.001; //p1易感到感染 p2恢复变为易感的概率(抗体消失的概率) p3大妈传染给普通学生的概率  
+//p4体质好被感染的概率(在基础上再乘) p5体质好的百分比  p6学生到大妈那打饭的概率 p自感概率 
+
+int position[8][2] = { {-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1} };  //元胞周围
+
+typedef struct site
+{
+    int stu;
+    int mark;
+}Site;
+
+void have_meal(int num)  //num 每批次就餐学生数
+{
+    Site site[Site_size + 1][Site_size + 1];  //模拟每个餐位
+    memset(student, 0, sizeof(student[0]) * (Total_num + 1));  //初始化学生都未吃饭
+    int i, j, k, z;
+    int stu, n;
+    int row, col;
+    int worker;
+
+    for (i = 1; i <= Wor_num; i++) //工作人员自发感染
+    {
+        if (wor_state[i] == 0)
+        {
+            if (wor_body[i] == 0 && (double)(random(10000) / 10000.0) <= p)
+            {
+                wor_after[i] = -1;
+            }
+            else if (wor_body[i] == 1 && (double)(random(10000) / 10000.0) <= p * p4)
+            {
+                wor_after[i] = -1;
+            }
+        }
+    }
+
+    for (k = 0; k * num < Total_num; k++) //需要改条件，因为患病者不能进食堂   //分批次进入食堂
+    {
+        for (i = 1; i <= Site_size; i++)
+        {
+            for (j = 1; j <= Site_size; j++)
+            {
+                site[i][j].mark = 0;
+            }
+        }
+
+        n = 0;
+
+        while (n < num && k * num + sick_num + n < Total_num) //模拟学生在食堂吃饭的随机入座
+        {
+            do
+            {
+                stu = random(Total_num);
+            } while (student[stu] == 1 || Stu_state[stu] == -2); //随机选取一个学生
+            student[stu] = 1;
+            n++;
+            worker = random(Wor_num);
+            if (wor_state[worker] == -1 && Stu_state[stu] == 0)  //到潜伏者大妈那打饭的概率
+            {
+                if (Stu_body[stu] == 1 && (double)(random(10000) / 10000.0) <= p3 * p4) //体质好学生被大妈感染
+                {
+                    Stu_after[stu] = -1;
+                }
+                else if (Stu_body[stu] == 0 && (double)(random(10000) / 10000.0) <= p3) //普通学生被大妈感染
+                {
+                    Stu_after[stu] == -1;
+                }
+            }
+            else if (wor_state[worker] == 0 && Stu_state[stu] == -1)
+            {
+                if (wor_body[worker] == 1 && (double)(random(10000) / 10000.0) <= p3 * p4) //体质好大妈被学生感染
+                {
+                    wor_after[worker] = -1;
+                }
+                else if (wor_body[worker] == 0 && (double)(random(10000) / 10000.0) <= p3) //普通大妈被学生感染
+                {
+                    wor_after[worker] = -1;
+                }
+            }
+
+            do
+            {
+                row = random(Site_size);
+                col = random(Site_size);
+            } while (site[row][col].mark);  //随机选取位置
+            site[row][col].mark = 1;
+            site[row][col].stu = stu;
+
+        }
+
+        for (i = 1; i <= Site_size; i++)
+        {
+            for (j = 1; j <= Site_size; j++)
+            {
+                if (site[i][j].mark == 1 && Stu_state[site[i][j].stu] == 0)
+                {
+                    if (Stu_body[site[i][j].stu] == 0 && (double)(random(10000) / 10000.0) <= p)  //普通学生自发感染
+                    {
+                        Stu_after[site[i][j].stu] = -1;
+                    }
+                    else if (Stu_body[site[i][j].stu] == 1 && (double)(random(10000) / 10000.0) <= p * p4)  //体质好学生被自发感染
+                    {
+                        Stu_after[site[i][j].stu] = -1;
+                    }
+
+                    for (z = 0; z < 7; z++) //循环周围的人
+                    {
+                        if (i + position[z][0]<1 || i + position[z][0]>Site_size || j + position[z][1]<1 || j + position[z][1]>Site_size || (site[i + position[z][0]][j + position[z][1]].mark == 1 && Stu_state[site[i + position[z][0]][j + position[z][1]].stu] != -1))
+                        {
+                            continue;
+                        }
+
+                        if (Stu_body[site[i][j].stu] == 0 && (double)(random(10000) / 10000.0) <= p1)  //普通学生被感染
+                        {
+                            Stu_after[site[i][j].stu] = -1;
+                        }
+                        else if (Stu_state[site[i][j].stu] == 1 && (double)(random(10000) / 10000.0) <= p1 * p4)  //体质好学生被感染
+                        {
+                            Stu_after[site[i][j].stu] = -1;
+                        }
+                    }
+                }
+
+            }
+        }
+    }
+    return;
+}
+
+void body_classify()  //对学生体质进行分类
+{
+    int i;
+    int stu, wor;
+    for (i = 0; i < (p5 * Total_num); i++)
+    {
+        do
+        {
+            stu = random(Total_num);
+        } while (Stu_body[stu]);
+        Stu_body[stu] = 1;
+    }
+
+    stu = random(Total_num);
+    Stu_state[stu] = -1;
+    state_days[stu] = incubation_time[Stu_body[stu]];   //其它人员作为初始潜伏者
+
+    for (i = 0; i < (p5 * Wor_num); i++)
+    {
+        do
+        {
+            wor = random(Wor_num);
+        } while (wor_body[wor]);
+        wor_body[wor] = 1;
+    }
+
+    /*wor = random(Wor_num);
+    wor_state[wor] = -1;
+    wor_days[wor] = incubation_time[wor_body[wor]];*/
+
+    return;
+}
+
+void ini_after()
+{
+    int i;
+    for (i = 1; i <= Total_num; i++)
+    {
+        Stu_after[i] = Stu_state[i];
+    }
+
+    for (i = 1; i <= Wor_num; i++)
+    {
+        wor_after[i] = wor_state[i];
+    }
+    return;
+}
+
+void copy_after()
+{
+    int i;
+    sick_num = 0;
+    incubation_num = 0;
+    for (i = 1; i <= Total_num; i++)
+    {
+        if (Stu_after[i] == -1 && Stu_state[i] == 0)
+        {
+            state_days[i] = incubation_time[Stu_body[i]];
+        }
+
+        if (Stu_state[i] == -2)
+        {
+            state_days[i]--;
+            if (state_days[i] == 0)
+            {
+                Stu_after[i] = 1;
+            }
+        }
+
+        if (Stu_state[i] == -1)
+        {
+            state_days[i]--;
+            if (state_days[i] == 0)
+            {
+                Stu_after[i] = -2;
+                state_days[i] = recovery_time[Stu_body[i]];
+            }
+        }
+
+        if (Stu_body[i] == 0 && Stu_state[i] == 1 && (double)(random(10000) / 10000.0) <= p2)
+        {
+            Stu_after[i] = 0;
+        }
+        else if (Stu_body[i] == 1 && Stu_state[i] == 1 && (double)(random(10000) / 10000.0) <= p2 * p4)
+        {
+            Stu_after[i] = 0;
+        }
+
+        Stu_state[i] = Stu_after[i];
+        if (Stu_state[i] == -1)
+        {
+            incubation_num++;
+        }
+        else if (Stu_state[i] == -2)
+        {
+            sick_num++;
+        }
+    }
+
+    for (i = 1; i <= Wor_num; i++)
+    {
+        if (wor_state[i] == 0 && wor_after[i] == -1)
+        {
+            wor_days[i] = incubation_time[wor_body[i]];
+        }
+        else if (wor_state[i] == -1)
+        {
+            wor_days[i]--;
+            if (wor_days[i] == 0)
+            {
+                if (random(1000) < p5 * 1000)
+                {
+                    wor_body[i] = 1;
+                }
+                else
+                {
+                    wor_body[i] = 0;
+                }
+                wor_after[i] = 0; //有人换班
+            }
+        }
+        else if (wor_state[i] == 1)
+        {
+            if (wor_body[i] == 1 && (double)(random(10000) / 10000.0) <= p2 * p4)
+            {
+                wor_after[i] = 0;
+            }
+            else if (wor_body[i] == 0 && (double)(random(10000) / 10000.0) <= p2)
+            {
+                wor_after[i] = 0;
+            }
+        }
+        wor_state[i] = wor_after[i];
+    }
+    return;
+}
+
+int main()
+{
+    int t;
+    //scanf("%lf %lf %lf %lf %lf %lf", &p1, &p3, &p4, &p5, &p6, &p);
+    body_classify(); //按照体质好的比例进行分类
+    for (t = 0; t < time; t++)
+    {
+        ini_after();
+        have_meal(Morning_num);
+        have_meal(Noon_num);
+        have_meal(Evening_num);
+        copy_after();
+        printf("%d %d %d %d\n", sick_num, incubation_num, sick_num + incubation_num, t + 1);
+    }
+    return 0;
+}
+
+////潜伏天数还没加
+////恢复天数还没加
+//宿舍还没加
+//大妈会恢复 并且 大妈会被隔离  大妈患病后即被换班，换班人员为随机体质，原先大妈痊愈后即被换回，且为恢复者
+//大妈会被感染
+//大妈会传染给学生
